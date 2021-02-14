@@ -1,3 +1,9 @@
+#------------------------------------------------------------------
+#       RANDOM CREATURE GENERATOR
+#       Create by Jennifer Lindner 
+#       as part of a masters thesis project
+#------------------------------------------------------------------
+
 import sys
 import os
 import os.path
@@ -16,6 +22,7 @@ from enum import IntEnum
 from colorsys import hls_to_rgb
 from pprint import pprint
 
+
 #------------------------------------------------------------------
 #           Global Parameters
 #------------------------------------------------------------------
@@ -25,7 +32,10 @@ from pprint import pprint
 #-------------------------
 #       General
 #-------------------------
-    
+
+# If seed is empty random will use current time as seed instead 
+# Same seed will get the same result
+SEED = ""    
 MERGE_OBJECTS = True
 SMOOTH_OBJECTS = True
 
@@ -681,7 +691,6 @@ def createWings(bp_main):
         
     return bp_wing  
 
-
        
 def createLegs(bp_main):
     # Number of legs
@@ -1085,11 +1094,6 @@ class ContinueI(Exception):
 
 
 if __name__ == "__main__":
-    reset_scene()
+    reset_scene() 
     
-    # Custom seed
-    # If empty every execution will use a new random seed
-    # If set every execution will use this seed 
-    customseed = '' 
-    
-    generate_creature(customseed)          
+    generate_creature(SEED)          
