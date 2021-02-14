@@ -2,6 +2,7 @@
 #       RANDOM CREATURE GENERATOR
 #       Create by Jennifer Lindner 
 #       as part of a masters thesis project
+#       Released under the MIT License.
 #------------------------------------------------------------------
 
 import sys
@@ -887,6 +888,7 @@ class RayCastHitObj:
 #------------------------------------------------------------------
 #           Helper Functions 
 #           by https://github.com/a1studmuffin/SpaceshipGenerator
+#           released under MIT License
 #------------------------------------------------------------------
 
 
