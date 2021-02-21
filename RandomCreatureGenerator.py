@@ -37,12 +37,13 @@ from pprint import pprint
 # If seed is empty random will use current time as seed instead 
 # Same seed will get the same result
 SEED = ""    
-MERGE_OBJECTS = True
+MERGE_OBJECTS = False
 SMOOTH_OBJECTS = True
 
 # SOLVES: Recalculations (e.g. of positions) running for too long, ends loop after certain amount of time
 # Timeout in seconds
 TIMEOUT = 5
+
 
 #-------------------------
 #       Torso
@@ -60,10 +61,22 @@ BODY_NR_TORSO_PARTS = range(1, 11)
 # Needs same length as BODY_NR_TORSO_PARTS
 BODY_NR_TORSO_PARTS_CHANCE = [0.3, 0.2, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025]
 
+# Recalculate the center of the torso after extrusion and deformation
+BODY_RECALCULATE_CENTER = False
+# Recalculate center via specific parameter
+# Options: 
+# ORIGIN_CENTER_OF_MASS
+# ORIGIN_GEOMETRY
+# ORIGIN_CENTER_OF_VOLUME
+BODY_RECALCULATE_CENTER_TYPE = "ORIGIN_CENTER_OF_VOLUME"
+
 
 #-------------------------
 #       Head and Neck
 #-------------------------
+
+# Either use torso center or (0,0,0) 
+NECK_USE_TORSO_CENTER = False
 
 NECK_CHANCE = 0.7
 
@@ -97,6 +110,8 @@ FINS_TOP_FIN_FUNCTION_CHANCE = 0.5
 FINS_TOP_FIN_MESH_RESOLUTION_X = 100
 FINS_TOP_FIN_MESH_RESOLUTION_Y = 100
 
+FINS_REDO = True
+
 
 #-------------------------
 #       Wings
@@ -106,6 +121,8 @@ FINS_TOP_FIN_MESH_RESOLUTION_Y = 100
 # one using a xyz-function the other using extruded cubes
 # set chance of how often either or will be used (never both)
 WINGS_FUNCTION_OBJECT_CHANCE = 0.5
+
+WINGS_REDO = True
 
 
 #-------------------------
@@ -162,12 +179,17 @@ def generate_creature(random_seed=''):
         BODY_FACE_UNIFORM_SCALE = uniform(0.5, 1.2)
         scale_face(mesh, BACK_FACE, BODY_FACE_UNIFORM_SCALE, BODY_FACE_UNIFORM_SCALE, 1)
       
+
     obj_torso = addMeshToScene(mesh, (f'Creature_Torso'))
-    center = Vector((0,0,0))
-    obj_torso.location = center
+    
+    # Recalculate objects center after modifications
+    if BODY_RECALCULATE_CENTER:
+        obj_torso.select_set(True)
+        bpy.ops.object.origin_set(type=BODY_RECALCULATE_CENTER_TYPE, center='MEDIAN')
+    
     
     # Save as body part and create torso
-    bp_torso = BodyPart(obj_torso, center)
+    bp_torso = BodyPart(obj_torso, obj_torso.location)
     creature.torso = bp_torso  
             
     # Start creating various body parts
@@ -192,6 +214,8 @@ def generate_creature(random_seed=''):
         if part == "Nothing":
             print("Do Nothing")
             
+            
+            
     if MERGE_OBJECTS:        
         # Merge all generated objects
         merge()
@@ -203,7 +227,6 @@ def generate_creature(random_seed=''):
     # Deselect everything, just for better visual 
     bpy.ops.object.select_all(action='DESELECT')
 
-
 def createHead(bp_torso):
     
     # Get random frontfacing location on main body
@@ -212,9 +235,15 @@ def createHead(bp_torso):
     HEAD_TORSO_RAYCAST_VEC_Y = 0
     HEAD_TORSO_RAYCAST_VEC_Z = uniform(0,5)
     
+    # Use actual center of torso object or origin vector 
+    center_vector = Vector((0,0,0))
+    new = center_vector - bp_torso.center
+    origin_point = center_vector if NECK_USE_TORSO_CENTER else new
+    #local_coord = bp_torso.obj.matrix_world.inverted() * origin_point
+    
     (world_location, hit, hit_vector, normal_vector, faceID) = getLocationRayCast(
         bp_torso.obj,
-        bp_torso.center,
+        origin_point,
         (HEAD_TORSO_RAYCAST_VEC_X, HEAD_TORSO_RAYCAST_VEC_Y, HEAD_TORSO_RAYCAST_VEC_Z))
     
     # Saves ancor point for head, either on torso (when no neck is generated) or neck
@@ -238,29 +267,29 @@ def createHead(bp_torso):
             NECK_LENGTH = NECK_LENGTH_EXTENDED
         
         # Get center point towards neck_vector
-        center = Vector(getPointOnVector(hit_vector, neck_vector, (NECK_LENGTH/2), -0.5))
+        center = Vector(getPointOnVector(world_location, neck_vector, (NECK_LENGTH/2), -0.5))
         
         bm = bmesh.new()
         bmesh.ops.create_cube(bm, size=1)
         
         # Scale randomly, scale neck to match NECK_LENGTH 
-        NECK_SCALE_X = uniform(0.5,1.5)
-        NECK_SCALE_Y = uniform(0.5,1.5)
+        NECK_SCALE_X = uniform(0.5,1)
+        NECK_SCALE_Y = uniform(0.5,1)
         bmesh.ops.scale(bm, 
             vec=(NECK_SCALE_X, NECK_SCALE_Y, NECK_LENGTH), 
             verts=bm.verts)
 
         obj_neck = addMeshToScene(bm, 'Creature_Neck')
-        obj_neck.location = center    
+        obj_neck.location = center   
         
         # Calculate and set rotation of obj to align with neck_vector
-        (phi, theta) = getRotationRad(hit_vector, center)
+        (phi, theta) = getRotationRad(world_location, center)
         obj_neck.rotation_euler[1] = theta 
         obj_neck.rotation_euler[2] = phi
         
         bp_neck = BodyPart(obj_neck, center)
         
-        NECK_END  = Vector(getPointOnVector(center, neck_vector, (NECK_LENGTH/2)))
+        NECK_END = Vector(getPointOnVector(center, neck_vector, (NECK_LENGTH/2)))
     
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1)    
@@ -521,6 +550,14 @@ def createFins(bp_main, head_center):
             fin_obj.location =  adjusted_location      
             bp_fin = Fin(fin_obj, adjusted_location, [equation])
             fins.append(bp_fin)
+            
+    # Remove Fins that may intersect with other body parts 
+    removed_fins = False
+    for fin in fins:
+        removed_fins = removeIntersecting([fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
+    
+    if FINS_REDO and removed_fins:
+        fins = createFins(bp_main, head_center)        
 
     return fins   
 
@@ -689,7 +726,13 @@ def createWings(bp_main):
         mirrorObj(wing_obj)
         
         bp_wing = Wing(wing_obj, adjusted_location) 
-        
+    
+    # Remove Legs that may intersect with other body parts    
+    removed_wing = removeIntersecting([bp_wing], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
+    
+    if WINGS_REDO and removed_wing:
+        bp_wing = createWings(bp_main)
+    
     return bp_wing  
 
        
@@ -724,10 +767,12 @@ def createLegs(bp_main):
                 (world_location, hit, hit_vector, normal_vector, faceID) = getLocationRayCast(bp_main.obj, (0,0,0), uniform_vector)
                 leg = Leg(RayCastHitObj(world_location, hit, hit_vector, normal_vector, faceID))
                 
+                LEGS_CHECK_DISTANCE = 1
+                
                 # Check if generated location is to close to other legs
-                for y in legs:
-                    if bool(y):
-                        if getDistBetweenPoints(y.main_body_joint.hit_vector, world_location) < 1:
+                for item in legs:
+                    if bool(item):
+                        if getDistBetweenPoints(item.main_body_joint.world_vector, world_location) < LEGS_CHECK_DISTANCE:
                             raise continue_i  
                 found_point = True               
             except ContinueI:
@@ -737,11 +782,14 @@ def createLegs(bp_main):
             legs.append(leg)
             
     # Sort leg array by x position (back to front)
-    legs = sorted(legs, key=lambda legs: (legs.main_body_joint.hit_vector.x))
+    legs = sorted(legs, key=lambda legs: (legs.main_body_joint.world_vector.x))
     
     # Create each individual leg
     for index, x in enumerate(legs):
         createLeg(x,  index, LEGS_NR_LEGS, bp_main)
+        # Remove Legs that may intersect with other body parts    
+        removeIntersecting(x.GetLegParts(), ["Creature_Head", "Creature_Wing", "Creature_Side_Fin", "Creature_Top_Fin"])    
+        
         
     return legs
         
@@ -750,7 +798,7 @@ def createLeg(leg, index, n_of_legs, bp_main):
     
     LEGS_NR_SECTIONS = uniform(1,3)
     
-    start = leg.main_body_joint.hit_vector
+    start = leg.main_body_joint.world_vector
     
     LEGS_PART_LENGTH_Y = uniform(0.5,1)
     LEGS_PART_LENGTH_Z = uniform(0.5,1)
@@ -800,7 +848,7 @@ def createLeg(leg, index, n_of_legs, bp_main):
         LEGS_PART_LENGTH_Y = numpy.clip((LEGS_PART_LENGTH_Y - uniform(0.1,0.3)), 0.2, 1)
         LEGS_PART_LENGTH_Z = numpy.clip((LEGS_PART_LENGTH_Z - uniform(0.1,0.3)), 0.2, 1)
         start = end
-        i += 1
+        i += 1    
          
   
 #------------------------------------------------------------------
@@ -1086,9 +1134,61 @@ def getLocationRayCast(start_obj, start, direction):
 
 # An exception which can be raised to break out of certain loops        
 class ContinueI(Exception):
-    
      pass
 
+
+# Remove newly generated bodyparts if they are intersecting with existing parts 
+def removeIntersecting(obj, check_against):
+    # Get all meshes 
+    objs = [f.obj for f in obj]
+    
+    # Get all meshes to check against
+    other_objs = []
+    for other_name in check_against:
+        list = [f for f in bpy.data.objects if f.type == 'MESH' and (other_name in f.name)]
+        other_objs = other_objs + list
+    
+    if other_objs != []:
+        intersecting = intersectionCheck(objs, other_objs)
+        if intersecting:
+            for o in objs:
+                o.select_set(True) 
+            bpy.ops.object.delete() 
+            print(f"Removed objects of type {str(obj)} due to intersection")
+            return True
+    return False    
+      
+
+# Test target array if they intersect with any other geometry
+def intersectionCheck(obj_array, other_obj_array):
+    
+    for obj in obj_array:
+        
+        for other_obj in other_obj_array:
+            
+            if obj == other_obj:
+                continue
+            # Create bmesh and fill with data from target objects
+            bm1 = bmesh.new()
+            bm2 = bmesh.new()
+            bm1.from_mesh(obj.data)
+            bm2.from_mesh(other_obj.data)            
+
+            # Make sure they are in the same world space
+            bm1.transform(obj.matrix_world)
+            bm2.transform(other_obj.matrix_world) 
+
+            obj_BVHtree = BVHTree.FromBMesh(bm1)
+            other_obj_BVHtree = BVHTree.FromBMesh(bm2)           
+
+            # Find any overlap between the objects
+            overlap = obj_BVHtree.overlap(other_obj_BVHtree)
+            # If any intersecting parts are found save object to array so it can be deleted 
+            if overlap != []:
+                return True
+            else:
+                return False
+   
 
 #------------------------------------------------------------------
 #           Main Function
