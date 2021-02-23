@@ -37,7 +37,7 @@ from pprint import pprint
 # If seed is empty random will use current time as seed instead 
 # Same seed will get the same result
 SEED = ""    
-MERGE_OBJECTS = False
+MERGE_OBJECTS = True
 SMOOTH_OBJECTS = True
 
 # SOLVES: Recalculations (e.g. of positions) running for too long, ends loop after certain amount of time
