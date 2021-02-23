@@ -91,8 +91,20 @@ EYES_NR_OF_EYES = range(1, 4)
 # Needs same length as EYES_NR_OF_EYES
 EYES_NR_OF_EYES_CHANCE = [0.7, 0.2, 0.1]
 
+# Option to generate symmetric or asymmetric eyes
+EYES_SYMMETRY = False
+# Chance that eyes are generated on left or right side, matters only when symmetry is false
+EYES_CHANCE_RIGHT_SIDE = 0.5
+
 EYE_OBJ_SEGMENTS_U = 10
 EYE_OBJ_SEGMENTS_V = 10
+
+
+#-------------------------
+#       Tail
+#-------------------------
+
+TAIL_VARIANT_BEZIER = 0.5
 
 
 #-------------------------
@@ -131,6 +143,7 @@ WINGS_REDO = True
 
 # Used in randInt so will exclude max number
 LEGS_MAX_NR_LEGS = 4
+LEGS_MIN_NR_LEGS = 1
 
     
 #------------------------------------------------------------------
@@ -139,7 +152,7 @@ LEGS_MAX_NR_LEGS = 4
 
         
 def generate_creature(random_seed=''):
-    # Set seed for random libraray function, if given
+    # Set seed for random library function, if given
     if random_seed:
         seed(random_seed)
 
@@ -191,16 +204,15 @@ def generate_creature(random_seed=''):
     # Save as body part and create torso
     bp_torso = BodyPart(obj_torso, obj_torso.location)
     creature.torso = bp_torso  
-            
-    # Start creating various body parts
-    creature.head = createHead(bp_torso)
     
+        
+    # Start creating various body parts
+    creature.head = createHead(bp_torso) 
     # Choose a number of body parts from available list
     BODY_PARTS = sample(BODY_PARTS_LIST, k=BODY_NR_BODY_PARTS)
     
     # DEBUG - See which body parts are chosen
     print(BODY_PARTS)
-    
     # Create selected body parts
     for part in BODY_PARTS:
         if part == "Legs":
@@ -213,7 +225,6 @@ def generate_creature(random_seed=''):
             creature.tail = createTail(bp_torso, BACK_FACE)
         if part == "Nothing":
             print("Do Nothing")
-            
             
             
     if MERGE_OBJECTS:        
@@ -348,6 +359,9 @@ def createEyes(head):
             # Random position on head
             EYES_HEAD_RAYCAST_VEC_X = uniform(0,1)
             EYES_HEAD_RAYCAST_VEC_Y = uniform(0.5,1)
+            if not EYES_SYMMETRY:
+                if random() < EYES_CHANCE_RIGHT_SIDE:
+                    EYES_HEAD_RAYCAST_VEC_Y = EYES_HEAD_RAYCAST_VEC_Y * -1
             EYES_HEAD_RAYCAST_VEC_Z = uniform(0,1)
             rayCast = getLocationRayCast(head.bp_head.obj,
                 (0,0,0), 
@@ -372,8 +386,9 @@ def createEyes(head):
             # Get data from successful raycast
             (world_location, hit, hit_vector, normal_vector, faceID) = rayCast
             obj_eye.location = world_location
-                
-            mirrorObj(obj_eye)
+            
+            if EYES_SYMMETRY :    
+                mirrorObj(obj_eye)
             
             # Create Eye object and save in head            
             bp_eye = Eye(obj_eye, world_location, EYES_RADIUS)
@@ -568,39 +583,60 @@ def createTail(bp_main, back_face):
     
     # Create bezier curve to start tail with some random x rotation
     TAIL_ROTATION = random()
-    bpy.ops.curve.primitive_bezier_curve_add(
-        enter_editmode=True, 
-        align='WORLD', 
-        location=world_location,
-        rotation=(TAIL_ROTATION,0,0))
-    
-    # Select the end of the tail to extend it
-    bpy.ops.curve.de_select_last()
-    
-    # Extrude and move around
-    TAIL_EXTEND_X = uniform(-1,0)
-    TAIL_EXTEND_Y = uniform(-1,1)
-    TAIL_EXTEND_Z = uniform(-1,1)
-    bpy.ops.curve.extrude_move(
-        CURVE_OT_extrude={"mode":'TRANSLATION'},
-        TRANSFORM_OT_translate={"value":(TAIL_EXTEND_X, TAIL_EXTEND_Y, TAIL_EXTEND_Z)})
+    if random() < TAIL_VARIANT_BEZIER:
+        
+        bpy.ops.curve.primitive_bezier_curve_add(
+            enter_editmode=True, 
+            align='WORLD', 
+            location=world_location,
+            rotation=(TAIL_ROTATION,0,0))
+        
+        # Select the end of the tail to extend it
+        bpy.ops.curve.de_select_last()
+        
+        # Extrude and move around
+        TAIL_EXTEND_X = uniform(-1,0)
+        TAIL_EXTEND_Y = uniform(-1,1)
+        TAIL_EXTEND_Z = uniform(-1,1)
+        bpy.ops.curve.extrude_move(
+            CURVE_OT_extrude={"mode":'TRANSLATION'},
+            TRANSFORM_OT_translate={"value":(TAIL_EXTEND_X, TAIL_EXTEND_Y, TAIL_EXTEND_Z)})
 
-    bpy.ops.object.editmode_toggle()
+        bpy.ops.object.editmode_toggle()
+            
+        # Bevel (round) mesh 
+        TAIL_BEVEL_DEPTH = uniform(0.01, 0.2)
+        bpy.context.object.data.bevel_depth = TAIL_BEVEL_DEPTH
+        bpy.ops.object.convert(target='MESH')
     
-    # Bevel (round) mesh 
-    TAIL_BEVEL_DEPTH = uniform(0.01, 0.2)
-    bpy.context.object.data.bevel_depth = TAIL_BEVEL_DEPTH
-    bpy.ops.object.convert(target='MESH')
-    
+    else:
+        # Create curly curve
+        bpy.ops.curve.curlycurve(
+            align='WORLD', 
+            location=world_location, 
+            rotation=(TAIL_ROTATION,0,0))
+            
+        # Bevel (round) mesh     
+        TAIL_BEVEL_DEPTH = uniform(0.1, 0.2)
+        bpy.context.object.data.bevel_depth = TAIL_BEVEL_DEPTH
+        bpy.ops.object.editmode_toggle()
+        bpy.ops.object.convert(target='MESH')
+        
+        # Solidify to give more thickness
+        bpy.ops.object.modifier_add(type='SOLIDIFY')
+        bpy.context.object.modifiers["Solidify"].thickness = 0.08
+        bpy.ops.object.modifier_apply(apply_as='DATA', modifier="Solidify")
+
     tail_obj = bpy.context.active_object
     tail_obj.name = "Creature_Tail"
     
     # Fill mesh to avoid holes and problems later when smoothing
-    bpy.ops.object.editmode_toggle()
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.fill()
-    
-    bpy.ops.object.editmode_toggle()
+    # Currently causes problems
+    #bpy.ops.object.editmode_toggle()
+    #bpy.ops.mesh.select_all(action='SELECT')
+    #bpy.ops.mesh.fill()
+    #bpy.ops.object.editmode_toggle()
+      
     
     bp_tail = BodyPart(tail_obj, world_location)
     
@@ -739,7 +775,7 @@ def createWings(bp_main):
 def createLegs(bp_main):
     # Number of legs
     
-    LEGS_NR_LEGS = randint(2,LEGS_MAX_NR_LEGS)
+    LEGS_NR_LEGS = randint(LEGS_MIN_NR_LEGS,LEGS_MAX_NR_LEGS)
     
     # Array holding leg objects
     legs = []
@@ -783,9 +819,10 @@ def createLegs(bp_main):
             
     # Sort leg array by x position (back to front)
     legs = sorted(legs, key=lambda legs: (legs.main_body_joint.world_vector.x))
+
     
     # Create each individual leg
-    for index, x in enumerate(legs):
+    for index, x in enumerate(legs):    
         createLeg(x,  index, LEGS_NR_LEGS, bp_main)
         # Remove Legs that may intersect with other body parts    
         removeIntersecting(x.GetLegParts(), ["Creature_Head", "Creature_Wing", "Creature_Side_Fin", "Creature_Top_Fin"])    
@@ -808,9 +845,9 @@ def createLeg(leg, index, n_of_legs, bp_main):
     
         # Prevent overlapping in rotation
         # SOVLES: Legs would criss cross
-        # Rotation angle start and end point determind my index of leg 
-        x_start = -1 + ((2/LEGS_NR_SECTIONS) * index)
-        x_end = numpy.clip((x_start + (2/LEGS_NR_SECTIONS)),-1,1)
+        # Rotation angle start and end point determind by index of leg 
+        x_start = -1 + ((2/n_of_legs) * index)
+        x_end = numpy.clip((x_start + (2/n_of_legs)),-1,1)
     
         # Random vectors for rotation
         LEGS_ROTATION_VEC_X = uniform(x_start,x_end)
@@ -838,6 +875,7 @@ def createLeg(leg, index, n_of_legs, bp_main):
         
         # Calculate rotation and rotate obj to align with vector
         (phi, theta) = getRotationRad(center, start)
+        
         leg_obj.rotation_euler[1] = theta 
         leg_obj.rotation_euler[2] = phi
         
@@ -1065,7 +1103,8 @@ def mirrorObj(obj):
     bmesh.update_edit_mesh(me)
     
     bpy.ops.object.mode_set(mode='OBJECT')    
-     
+    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
+
     bpy.ops.object.select_all(action='DESELECT')
     bpy.context.active_object.select_set(False)
     bpy.context.view_layer.objects.active = None    
