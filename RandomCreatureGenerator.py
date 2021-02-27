@@ -40,6 +40,9 @@ SEED = ""
 MERGE_OBJECTS = True
 SMOOTH_OBJECTS = True
 
+# Use basic join or bool tool
+USE_BASIC_MERGE = False
+
 # SOLVES: Recalculations (e.g. of positions) running for too long, ends loop after certain amount of time
 # Timeout in seconds
 TIMEOUT = 5
@@ -92,7 +95,7 @@ EYES_NR_OF_EYES = range(1, 4)
 EYES_NR_OF_EYES_CHANCE = [0.7, 0.2, 0.1]
 
 # Option to generate symmetric or asymmetric eyes
-EYES_SYMMETRY = False
+EYES_SYMMETRY = True
 # Chance that eyes are generated on left or right side, matters only when symmetry is false
 EYES_CHANCE_RIGHT_SIDE = 0.5
 
@@ -224,8 +227,7 @@ def generate_creature(random_seed=''):
         if part == "Tail":
             creature.tail = createTail(bp_torso, BACK_FACE)
         if part == "Nothing":
-            print("Do Nothing")
-            
+            print("")
             
     if MERGE_OBJECTS:        
         # Merge all generated objects
@@ -297,7 +299,7 @@ def createHead(bp_torso):
         (phi, theta) = getRotationRad(world_location, center)
         obj_neck.rotation_euler[1] = theta 
         obj_neck.rotation_euler[2] = phi
-        
+
         bp_neck = BodyPart(obj_neck, center)
         
         NECK_END = Vector(getPointOnVector(center, neck_vector, (NECK_LENGTH/2)))
@@ -400,91 +402,15 @@ def createFins(bp_main, head_center):
     
     # Chance that side fins are generated 
     if random() < FINS_SIDE_FIN_CHANCE:
-        
-        found = False
-        
-        world_location = None
-        
-        timeout_start = time.time()
-        
-        # SOLVES: Fins being generated on the front/top/bottom/back face causing weird sturctures because of wrong rotation, etc.. 
-        # Generate a new position if the fin is not generated on the side faces
-        while not found and (time.time() < timeout_start + TIMEOUT):
-            FINS_SIDE_FIN_RAYCAST_VEC_X = uniform(-1, 0)
-            FINS_SIDE_FIN_RAYCAST_VEC_Y = uniform(0, 1)
-            FINS_SIDE_FIN_RAYCAST_VEC_Z = uniform(0,0.5)
-            side_fin_vector = Vector((FINS_SIDE_FIN_RAYCAST_VEC_X, FINS_SIDE_FIN_RAYCAST_VEC_Y, FINS_SIDE_FIN_RAYCAST_VEC_Z))
-            (world_location, hit, hit_vector, normal_vector, faceID) = getLocationRayCast(bp_main.obj, (0,0,0), side_fin_vector) 
-            
-            # Get hit face and see if its correct face        
-            face = getFace(bp_main.obj, faceID)
-            if face.normal.x > -0.5 and face.normal.x < 0.5 and face.normal.z > -0.5 and face.normal.z < 0.5:
-                found = True
-
-        context = bpy.context 
-        
-        # Create a semi random function to create a fin like shape
-        x_divide= uniform(1,4)
-        y_divide = uniform(1,4)
-        x_function = choices(["sin(v)", "cos(v)"], k=1)[0]
-        
-        # Combine random values with template functions
-        x_equation = f"({x_function} + u * cos(v) * sin(v)) / {x_divide}"
-        y_equation = f"(u * sin(v)) / {y_divide} "
-        z_equation = f"cos(u)"
-
-        # Generate mesh with functions
-        bpy.ops.mesh.primitive_xyz_function_surface(
-            x_eq=x_equation,
-            y_eq=y_equation,
-            z_eq=z_equation)
-            
-        fin_obj = context.object
-        fin_obj.name = "Creature_Side_Fin"  
-        
-        me = fin_obj.data
-        bm = bmesh.from_edit_mesh(me)
-        
-        # Remove excess verticies that wont be part of the fin mesh
-        verts = [f for f in bm.verts if f.co.z < 0.9 or f.co.y < 0]
-        bmesh.ops.delete(bm, geom=verts)
-        
-        # Clean up mesh
-        
-        # Delete loose verticies, edges, faces
-        bpy.ops.mesh.delete_loose()
-        
-        # Create coherent and connected mesh, filling in holes, etc..
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.convex_hull()
-        
-        bmesh.update_edit_mesh(me)
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-        # Reset pivot point to where the fin would connect to the torso
-        fin_obj.location = (0,0,0)
-        # Curser location is dummy for TODO
-        saved_location = context.scene.cursor.location
-        context.scene.cursor.location = Vector((0,0.2,0.9))
-        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-        context.scene.cursor.location = saved_location
-        fin_obj.location=(world_location)
-        
-        bp_fin = Fin(fin_obj, world_location, [x_equation, y_equation, z_equation])
-        
-        fins.append(bp_fin)
-        
-        mirrorObj(fin_obj)
+        fins.append(createSideFinVariantXYZ(bp_main))
         
     # Chance that top fins are generated   
     if random() < FINS_TOP_FIN_CHANCE:
         
-        context = bpy.context  
-    
         found = False
-        
+    
         world_location = None
-        
+    
         # SOLVES: Fin being generated infront of the head
         # making sure it starts behind it or inside it 
         while not found:
@@ -493,88 +419,187 @@ def createFins(bp_main, head_center):
             FINS_TOP_FIN_RAYCAST_VEC_Z = uniform(0.1,1)
             top_fin_vector = Vector((FINS_TOP_FIN_RAYCAST_VEC_X, FINS_TOP_FIN_RAYCAST_VEC_Y, FINS_TOP_FIN_RAYCAST_VEC_Z))
             (world_location, hit, hit_vector, normal_vector, faceID) = getLocationRayCast(bp_main.obj, (0,0,0), top_fin_vector)         
-            
+        
             if head_center.x > world_location.x:
                 found = True
-         
+    
         # Use either xyz-function or z-function, these generate different shapes         
         if random() < FINS_TOP_FIN_FUNCTION_CHANCE:
-            # Create a semi random function to create a fin like shape      
-            x_divide = uniform(1,4)
-            z_divide = uniform(1,4)   
-            z_divide_2 = uniform(2,4)
-                    
-            x_equation = f"(u*sin(v/2)*-1)/{x_divide}"
-            y_equation = f"0"
-            z_equation = f"(sin(v)+u*cos(v/{z_divide_2})*sin(v))/{z_divide}"  
-
-            bpy.ops.mesh.primitive_xyz_function_surface(
-                x_eq=x_equation,
-                y_eq=y_equation,
-                z_eq=z_equation)
-                    
-            fin_obj = context.object
-            fin_obj.name = "Creature_Top_Fin"  
-            
-            me = fin_obj.data
-            bm = bmesh.from_edit_mesh(me)
-            
-            # Delete unused verticies/ edges/faces, deleting the front half of the function mesh
-            verts = [f for f in bm.verts if f.co.x > 0]
-            bmesh.ops.delete(bm, geom=verts)
-            bpy.ops.mesh.delete_loose()
-            bmesh.update_edit_mesh(me)
-            
-            bpy.ops.object.mode_set(mode='OBJECT')
-            
-            adjusted_location = (world_location.x, world_location.y, world_location.z-0.2)
-            fin_obj.location =  adjusted_location      
-            bp_fin = Fin(fin_obj, adjusted_location, [x_equation, y_equation, z_equation])
-            fins.append(bp_fin)
-            
+            fins.append(createTopFinVariantXYZ(bp_main, world_location))
         else:
-            # Create a semi random function to create a fin like shape
-            x_scale = uniform(1,4)
-            sin_divide = uniform(1,2)
-            
-            equation = f"sin(x*{x_scale})/{sin_divide}+1"
-            
-            bpy.ops.mesh.primitive_z_function_surface(
-                equation = equation,
-                div_x = FINS_TOP_FIN_MESH_RESOLUTION_X, 
-                div_y = FINS_TOP_FIN_MESH_RESOLUTION_Y)
-            
-            fin_obj = context.object
-                
-            fin_obj.name = "Creature_Top_Fin"  
-            
-            FINS_TOP_FIN_SCALE_X = uniform(0.5,2)    
-            FINS_TOP_FIN_SCALE_Y = 0.01
-            FINS_TOP_FIN_SCALE_Z = 1
-            
-            # Scale curve mesh some more
-            bpy.ops.transform.resize(value=(FINS_TOP_FIN_SCALE_X, FINS_TOP_FIN_SCALE_Y, FINS_TOP_FIN_SCALE_Z))
-            
-            # Extrude in z-direction to give curve thickness
-            bpy.ops.object.editmode_toggle()
-            bpy.ops.mesh.extrude_region_move( TRANSFORM_OT_translate={"value":(0, 0, -2)})
-            bpy.ops.transform.resize(value=(0.5, 1, 1), proportional_size=1)
-            bpy.ops.object.editmode_toggle()
-            
-            adjusted_location = (world_location.x, world_location.y, world_location.z-0.2)
-            fin_obj.location =  adjusted_location      
-            bp_fin = Fin(fin_obj, adjusted_location, [equation])
-            fins.append(bp_fin)
-            
-    # Remove Fins that may intersect with other body parts 
-    removed_fins = False
-    for fin in fins:
-        removed_fins = removeIntersecting([fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
-    
-    if FINS_REDO and removed_fins:
-        fins = createFins(bp_main, head_center)        
+            fins.append(createTopFinVariantZ(bp_main, world_location))
 
     return fins   
+
+def createTopFinVariantZ(bp_main, world_location):
+    context = bpy.context  
+    
+    # Create a semi random function to create a fin like shape
+    x_scale = uniform(1,4)
+    sin_divide = uniform(1,2)
+    
+    equation = f"sin(x*{x_scale})/{sin_divide}+1"
+    
+    bpy.ops.mesh.primitive_z_function_surface(
+        equation = equation,
+        div_x = FINS_TOP_FIN_MESH_RESOLUTION_X, 
+        div_y = FINS_TOP_FIN_MESH_RESOLUTION_Y)
+    
+    fin_obj = context.object
+        
+    fin_obj.name = "Creature_Top_Fin"  
+    
+    FINS_TOP_FIN_SCALE_X = uniform(0.5,2)    
+    FINS_TOP_FIN_SCALE_Y = 0.01
+    FINS_TOP_FIN_SCALE_Z = 1
+    
+    # Scale curve mesh some more
+    bpy.ops.transform.resize(value=(FINS_TOP_FIN_SCALE_X, FINS_TOP_FIN_SCALE_Y, FINS_TOP_FIN_SCALE_Z))
+    
+    # Extrude in z-direction to give curve thickness
+    bpy.ops.object.editmode_toggle()
+    bpy.ops.mesh.extrude_region_move( TRANSFORM_OT_translate={"value":(0, 0, -2)})
+    bpy.ops.transform.resize(value=(0.5, 1, 1), proportional_size=1)
+    bpy.ops.object.editmode_toggle()
+    
+    adjusted_location = (world_location.x, world_location.y, world_location.z-0.2)
+    fin_obj.location =  adjusted_location      
+    bp_fin = Fin(fin_obj, adjusted_location, [equation])
+        
+    # Remove Fin if they intersect with other body parts 
+    removed_fin = removeIntersecting([bp_fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
+    
+    if FINS_REDO and removed_fin:
+        bp_fin = createTopFinVariantZ(bp_main)             
+    
+    return bp_fin
+
+
+def createTopFinVariantXYZ(bp_main, world_location):
+    context = bpy.context  
+
+    # Create a semi random function to create a fin like shape      
+    x_divide = uniform(1,4)
+    z_divide = uniform(1,4)   
+    z_divide_2 = uniform(2,4)
+            
+    x_equation = f"(u*sin(v/2)*-1)/{x_divide}"
+    y_equation = f"0"
+    z_equation = f"(sin(v)+u*cos(v/{z_divide_2})*sin(v))/{z_divide}"  
+
+    bpy.ops.mesh.primitive_xyz_function_surface(
+        x_eq=x_equation,
+        y_eq=y_equation,
+        z_eq=z_equation)
+            
+    fin_obj = context.object
+    fin_obj.name = "Creature_Top_Fin"  
+    
+    me = fin_obj.data
+    bm = bmesh.from_edit_mesh(me)
+    
+    # Delete unused verticies/ edges/faces, deleting the front half of the function mesh
+    verts = [f for f in bm.verts if f.co.x > 0]
+    bmesh.ops.delete(bm, geom=verts)
+    bpy.ops.mesh.delete_loose()
+    bmesh.update_edit_mesh(me)
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    adjusted_location = (world_location.x, world_location.y, world_location.z-0.2)
+    fin_obj.location =  adjusted_location      
+    bp_fin = Fin(fin_obj, adjusted_location, [x_equation, y_equation, z_equation])    
+
+    # Remove Fin if they intersect with other body parts 
+    removed_fin = removeIntersecting([bp_fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
+    
+    if FINS_REDO and removed_fin:
+        bp_fin = createTopFinVariantXYZ(bp_main)     
+    
+    return bp_fin
+
+
+def createSideFinVariantXYZ(bp_main):
+    found = False
+    
+    world_location = None
+    
+    timeout_start = time.time()
+    
+    # SOLVES: Fins being generated on the front/top/bottom/back face causing weird sturctures because of wrong rotation, etc.. 
+    # Generate a new position if the fin is not generated on the side faces
+    while not found and (time.time() < timeout_start + TIMEOUT):
+        FINS_SIDE_FIN_RAYCAST_VEC_X = uniform(-1, 0)
+        FINS_SIDE_FIN_RAYCAST_VEC_Y = uniform(0, 1)
+        FINS_SIDE_FIN_RAYCAST_VEC_Z = uniform(0,0.5)
+        side_fin_vector = Vector((FINS_SIDE_FIN_RAYCAST_VEC_X, FINS_SIDE_FIN_RAYCAST_VEC_Y, FINS_SIDE_FIN_RAYCAST_VEC_Z))
+        (world_location, hit, hit_vector, normal_vector, faceID) = getLocationRayCast(bp_main.obj, (0,0,0), side_fin_vector) 
+        
+        # Get hit face and see if its correct face        
+        face = getFace(bp_main.obj, faceID)
+        if face.normal.x > -0.5 and face.normal.x < 0.5 and face.normal.z > -0.5 and face.normal.z < 0.5:
+            found = True
+
+    context = bpy.context 
+    
+    # Create a semi random function to create a fin like shape
+    x_divide= uniform(1,4)
+    y_divide = uniform(1,4)
+    x_function = choices(["sin(v)", "cos(v)"], k=1)[0]
+    
+    # Combine random values with template functions
+    x_equation = f"({x_function} + u * cos(v) * sin(v)) / {x_divide}"
+    y_equation = f"(u * sin(v)) / {y_divide} "
+    z_equation = f"cos(u)"
+
+    # Generate mesh with functions
+    bpy.ops.mesh.primitive_xyz_function_surface(
+        x_eq=x_equation,
+        y_eq=y_equation,
+        z_eq=z_equation)
+        
+    fin_obj = context.object
+    fin_obj.name = "Creature_Side_Fin"  
+    
+    me = fin_obj.data
+    bm = bmesh.from_edit_mesh(me)
+    
+    # Remove excess verticies that wont be part of the fin mesh
+    verts = [f for f in bm.verts if f.co.z < 0.9 or f.co.y < 0]
+    bmesh.ops.delete(bm, geom=verts)
+    
+    # Clean up mesh
+    
+    # Delete loose verticies, edges, faces
+    bpy.ops.mesh.delete_loose()
+    
+    # Create coherent and connected mesh, filling in holes, etc..
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.convex_hull()
+    
+    bmesh.update_edit_mesh(me)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # Reset pivot point to where the fin would connect to the torso
+    fin_obj.location = (0,0,0)
+    # Curser location is dummy for TODO
+    saved_location = context.scene.cursor.location
+    context.scene.cursor.location = Vector((0,0.2,0.9))
+    bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+    context.scene.cursor.location = saved_location
+    fin_obj.location=(world_location)
+    
+    mirrorObj(fin_obj)
+    
+    bp_fin = Fin(fin_obj, world_location, [x_equation, y_equation, z_equation])
+    
+    # Remove Fin if they intersect with other body parts 
+    removed_fin = removeIntersecting([bp_fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
+    
+    if FINS_REDO and removed_fin:
+        bp_fin = createSideFinVariantXYZ(bp_main)     
+    
+    return bp_fin
 
 
 def createTail(bp_main, back_face):
@@ -628,6 +653,15 @@ def createTail(bp_main, back_face):
         bpy.ops.object.modifier_apply(apply_as='DATA', modifier="Solidify")
 
     tail_obj = bpy.context.active_object
+    
+    # Calculate rotation and rotate obj to align with the normal of the back face
+    (phi, theta) = getRotationRad(world_location, back_face.normal)
+    print(phi, theta)
+    
+    # Add 1.5rad to go from vertical to horozontal rotation, 1.5rad = 90°    
+    tail_obj.rotation_euler[1] = theta + 1.5
+    tail_obj.rotation_euler[2] = phi 
+    
     tail_obj.name = "Creature_Tail"
     
     # Fill mesh to avoid holes and problems later when smoothing
@@ -636,7 +670,6 @@ def createTail(bp_main, back_face):
     #bpy.ops.mesh.select_all(action='SELECT')
     #bpy.ops.mesh.fill()
     #bpy.ops.object.editmode_toggle()
-      
     
     bp_tail = BodyPart(tail_obj, world_location)
     
@@ -648,6 +681,7 @@ def createWings(bp_main):
     
     bp_wing = ""
     
+    # Calculate possible location
     WING_RAYCAST_VEC_X = uniform(-0.2, 0.2)
     WING_RAYCAST_VEC_Y = 1
     WING_RAYCAST_VEC_Z = uniform(0,0.5)
@@ -656,120 +690,131 @@ def createWings(bp_main):
     
     # Either use xyz-function or mesh-extrusion method
     if random() < WINGS_FUNCTION_OBJECT_CHANCE:
-                        
-        x_divide = uniform(1,4)
-        y_divide = uniform(2,4)
-             
-        x_equation = f"((sin(v) + u * sin(v) * sin(v)) / {x_divide}) * -1"
-        y_equation = f"(u * sin(v)) / {y_divide} "
-        z_equation = f"cos(u)"
-        
-        bpy.ops.mesh.primitive_xyz_function_surface(
-            x_eq=x_equation,
-            y_eq=y_equation,
-            z_eq=z_equation)
-       
-        wing_obj = context.object
-        wing_obj.name = "Creature_Wing"  
-        
-        me = wing_obj.data
-        bm = bmesh.from_edit_mesh(me)
-
-        # Delete extra verticies/ edges/ faces, specifically half of the generated curve, and underpart
-        verts = [f for f in bm.verts if f.co.z < 0.9 or f.co.y < 0]
-        bmesh.ops.delete(bm, geom=verts)
-        
-        # Fix mesh 
-        bpy.ops.mesh.delete_loose()
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.convex_hull()
-        bmesh.update_edit_mesh(me)
-        
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-        # Reset obj location to where wing would meet the torso
-        wing_obj.location = (0,0,0)
-        saved_location = context.scene.cursor.location
-        context.scene.cursor.location = Vector((0,0.2,0.9))
-        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-        context.scene.cursor.location = saved_location
-        
-        # Recess into torso slightly
-        adjusted_location = (world_location.x, world_location.y - 0.2,world_location.z)
-        wing_obj.location = adjusted_location
-        
-        # Rotate to look a bit nicer
-        bpy.ops.transform.rotate(value=-1, orient_axis='X', orient_type='LOCAL')
-        bpy.ops.transform.rotate(value=0.2, orient_axis='Y', orient_type='LOCAL')
-        
-        mirrorObj(wing_obj)
-        
-        bp_wing = Wing(wing_obj, adjusted_location, [x_equation, y_equation, z_equation])
-        
+        bp_wing = createWingVariantXYZ(bp_main, world_location)
     else:
-        bm = bmesh.new()
-        
-        bmesh.ops.create_cube(bm, size=1) 
-        
-        # Scale wing to be flat 
-        WING_SCALE_X = uniform(1, 2)
-        WING_SCALE_Y = uniform(0.5, 1) 
-        WING_SCALE_Z = uniform(0.1, 0.3)
-        bmesh.ops.scale(bm, vec=(WING_SCALE_X, WING_SCALE_Y, WING_SCALE_Z), verts=bm.verts)
-
-        # This needs to be done to ensure all faces are indexed correctly 
-        bm.faces.ensure_lookup_table()
-        
-        # Select tip of the wing and scale 
-        face = bm.faces[1]
-        WING_FACE_SCALE_X = uniform(1, 1.5)
-        WING_FACE_SCALE_Y = uniform(1, 1.5)
-        scale_face(bm, face,  WING_FACE_SCALE_X,  WING_FACE_SCALE_Y, 1)
-        
-        # Move face slighly to generate curves 
-        WING_FACE_MOVE_X = uniform(-0.5,0)
-        WING_FACE_MOVE_Y = 0
-        WING_FACE_MOVE_Z = 0
-        move_face(bm, face, (WING_FACE_MOVE_X, WING_FACE_MOVE_Y, WING_FACE_MOVE_Z))
-        
-        # Extrude, scale and move wing face to create tip
-        x = 0
-        WING_NR_OF_PARTS = randint(2,5)
-        while x <= WING_NR_OF_PARTS:
-            WING_SUB_FACE_EXTRUDE_LENGTH = uniform(0.2, 1)
-            WING_SUB_FACE_EXTRUDE_NORMAL_MODIFIER = uniform(-1,-0.5)
-            face = extrude_face(bm, face, WING_SUB_FACE_EXTRUDE_LENGTH, WING_SUB_FACE_EXTRUDE_NORMAL_MODIFIER) 
-            
-            # If last part scale to create pointy end
-            if x == WING_NR_OF_PARTS:
-                scale_face(bm, face, 0.01, 0.01,1)
-            # Scale to get smaller    
-            else:
-                WING_SUB_FACE_SCALE_X = uniform(0.5, 0.9)
-                WING_SUB_FACE_SCALE_Y = uniform(0.8, 0.9)
-                scale_face(bm, face, WING_SUB_FACE_SCALE_X, WING_SUB_FACE_SCALE_Y, 1)
-            
-            # Move face to give nice curve
-            WING_SUB_FACE_MOVE_X = uniform(-0.5,0)
-            move_face(bm, face, (WING_SUB_FACE_MOVE_X, 0, 0)) 
-               
-            x = x + 1   
-            
-        wing_obj = addMeshToScene(bm, (f'Creature_Wing'))
-        adjusted_location = (world_location.x, world_location.y - 0.2,world_location.z)
-        wing_obj.location = adjusted_location
-        
-        mirrorObj(wing_obj)
-        
-        bp_wing = Wing(wing_obj, adjusted_location) 
+        bp_wing = createWingVariantExtrude(bp_main, world_location)
     
     # Remove Legs that may intersect with other body parts    
     removed_wing = removeIntersecting([bp_wing], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
     
+    # If wing got deleted, redo
     if WINGS_REDO and removed_wing:
         bp_wing = createWings(bp_main)
     
-    return bp_wing  
+    return bp_wing
+ 
+ 
+def createWingVariantXYZ(bp_main, world_location):
+    context = bpy.context  
+    
+    x_divide = uniform(1,4)
+    y_divide = uniform(2,4)
+         
+    x_equation = f"((sin(v) + u * sin(v) * sin(v)) / {x_divide}) * -1"
+    y_equation = f"(u * sin(v)) / {y_divide} "
+    z_equation = f"cos(u)"
+    
+    bpy.ops.mesh.primitive_xyz_function_surface(
+        x_eq=x_equation,
+        y_eq=y_equation,
+        z_eq=z_equation)
+   
+    wing_obj = context.object
+    wing_obj.name = "Creature_Wing"  
+    
+    me = wing_obj.data
+    bm = bmesh.from_edit_mesh(me)
+
+    # Delete extra verticies/ edges/ faces, specifically half of the generated curve, and underpart
+    verts = [f for f in bm.verts if f.co.z < 0.9 or f.co.y < 0]
+    bmesh.ops.delete(bm, geom=verts)
+    
+    # Fix mesh 
+    bpy.ops.mesh.delete_loose()
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.convex_hull()
+    bmesh.update_edit_mesh(me)
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # Reset obj location to where wing would meet the torso
+    wing_obj.location = (0,0,0)
+    saved_location = context.scene.cursor.location
+    context.scene.cursor.location = Vector((0,0.2,0.9))
+    bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+    context.scene.cursor.location = saved_location
+    
+    # Recess into torso slightly
+    adjusted_location = (world_location.x, world_location.y - 0.2,world_location.z)
+    wing_obj.location = adjusted_location
+    
+    # Rotate to look a bit nicer
+    bpy.ops.transform.rotate(value=-1, orient_axis='X', orient_type='LOCAL')
+    bpy.ops.transform.rotate(value=0.2, orient_axis='Y', orient_type='LOCAL')
+    
+    mirrorObj(wing_obj)
+    
+    return Wing(wing_obj, adjusted_location, [x_equation, y_equation, z_equation])
+  
+
+def createWingVariantExtrude(bp_main, world_location):
+    context = bpy.context  
+    
+    bm = bmesh.new()
+        
+    bmesh.ops.create_cube(bm, size=1) 
+    
+    # Scale wing to be flat 
+    WING_SCALE_X = uniform(1, 2)
+    WING_SCALE_Y = uniform(0.5, 1) 
+    WING_SCALE_Z = uniform(0.1, 0.3)
+    bmesh.ops.scale(bm, vec=(WING_SCALE_X, WING_SCALE_Y, WING_SCALE_Z), verts=bm.verts)
+
+    # This needs to be done to ensure all faces are indexed correctly 
+    bm.faces.ensure_lookup_table()
+    
+    # Select tip of the wing and scale 
+    face = bm.faces[1]
+    WING_FACE_SCALE_X = uniform(1, 1.5)
+    WING_FACE_SCALE_Y = uniform(1, 1.5)
+    scale_face(bm, face,  WING_FACE_SCALE_X,  WING_FACE_SCALE_Y, 1)
+    
+    # Move face slighly to generate curves 
+    WING_FACE_MOVE_X = uniform(-0.5,0)
+    WING_FACE_MOVE_Y = 0
+    WING_FACE_MOVE_Z = 0
+    move_face(bm, face, (WING_FACE_MOVE_X, WING_FACE_MOVE_Y, WING_FACE_MOVE_Z))
+    
+    # Extrude, scale and move wing face to create tip
+    x = 0
+    WING_NR_OF_PARTS = randint(2,5)
+    while x <= WING_NR_OF_PARTS:
+        WING_SUB_FACE_EXTRUDE_LENGTH = uniform(0.2, 1)
+        WING_SUB_FACE_EXTRUDE_NORMAL_MODIFIER = uniform(-1,-0.5)
+        face = extrude_face(bm, face, WING_SUB_FACE_EXTRUDE_LENGTH, WING_SUB_FACE_EXTRUDE_NORMAL_MODIFIER) 
+        
+        # If last part scale to create pointy end
+        if x == WING_NR_OF_PARTS:
+            scale_face(bm, face, 0.01, 0.01,1)
+        # Scale to get smaller    
+        else:
+            WING_SUB_FACE_SCALE_X = uniform(0.5, 0.9)
+            WING_SUB_FACE_SCALE_Y = uniform(0.8, 0.9)
+            scale_face(bm, face, WING_SUB_FACE_SCALE_X, WING_SUB_FACE_SCALE_Y, 1)
+        
+        # Move face to give nice curve
+        WING_SUB_FACE_MOVE_X = uniform(-0.5,0)
+        move_face(bm, face, (WING_SUB_FACE_MOVE_X, 0, 0)) 
+           
+        x = x + 1
+        
+    wing_obj = addMeshToScene(bm, (f'Creature_Wing'))
+    adjusted_location = (world_location.x, world_location.y - 0.2,world_location.z)
+    wing_obj.location = adjusted_location
+        
+    mirrorObj(wing_obj)       
+        
+    return Wing(wing_obj, adjusted_location) 
 
        
 def createLegs(bp_main):
@@ -885,9 +930,10 @@ def createLeg(leg, index, n_of_legs, bp_main):
         
         LEGS_PART_LENGTH_Y = numpy.clip((LEGS_PART_LENGTH_Y - uniform(0.1,0.3)), 0.2, 1)
         LEGS_PART_LENGTH_Z = numpy.clip((LEGS_PART_LENGTH_Z - uniform(0.1,0.3)), 0.2, 1)
+            
         start = end
-        i += 1    
-         
+        i += 1
+        
   
 #------------------------------------------------------------------
 #           Classes
@@ -1054,8 +1100,15 @@ def merge():
     context.view_layer.objects.active = obj
     
     bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.join()
     
+    # Uses either normal join, which makes it one objekt but doesnt actually joins meshes
+    if USE_BASIC_MERGE:
+        bpy.ops.object.join()
+    # Bool Tool Addon     
+    else:    
+        bpy.ops.object.modifier_apply(modifier="Auto Boolean")
+        bpy.ops.object.booltool_auto_union()
+
     obj = bpy.context.active_object
     obj.name = "Creature"
     
