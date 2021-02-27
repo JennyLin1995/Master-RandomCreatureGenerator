@@ -16,7 +16,8 @@ by Jennifer Lindner, s0549868, HTW Berlin (University of Applied Sciences), 2020
 
 Either download the project by cloning the Repository or simply download the RandomCreatureGenerator.py
 In Blender, use the "Scripting" Workspace. In the editor open the downloaded file (Text > Open), or create a new script and paste the code there.
-Using the Play Button or Text > Run Script will run the generator and create a random new creature
+Using the Play Button or Text > Run Script will run the generator and create a random new creature.
+To avoid problems open the system console (Window > Toggle System Console) with CTRL + C you can usually stop any excecution in case some calculations are taking to long. (Mostly when smoothing the mesh, it can take a long time, you can turn off smoothing in the global parameters)
 
 ## Changing values
 
