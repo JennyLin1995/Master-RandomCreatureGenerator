@@ -41,7 +41,7 @@ MERGE_OBJECTS = True
 SMOOTH_OBJECTS = True
 
 # Use basic join or bool tool
-USE_BASIC_MERGE = False
+USE_BASIC_MERGE = True
 
 # SOLVES: Recalculations (e.g. of positions) running for too long, ends loop after certain amount of time
 # Timeout in seconds
@@ -470,7 +470,7 @@ def createTopFinVariantZ(bp_main, world_location):
     removed_fin = removeIntersecting([bp_fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
     
     if FINS_REDO and removed_fin:
-        bp_fin = createTopFinVariantZ(bp_main)             
+        bp_fin = createTopFinVariantZ(bp_main, world_location)             
     
     return bp_fin
 
@@ -514,7 +514,7 @@ def createTopFinVariantXYZ(bp_main, world_location):
     removed_fin = removeIntersecting([bp_fin], ["Creature_Leg", "Creature_Side_Fin", "Creature_Top_Fin", "Creature_Wing"])    
     
     if FINS_REDO and removed_fin:
-        bp_fin = createTopFinVariantXYZ(bp_main)     
+        bp_fin = createTopFinVariantXYZ(bp_main, world_location)     
     
     return bp_fin
 
