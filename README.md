@@ -11,6 +11,7 @@ by Jennifer Lindner, s0549868, HTW Berlin (University of Applied Sciences), 2020
 2) Start a new blender project and enable the following modules under Edit > Preferences > Add-ons (search for "extra"):
 - Add Curve: Extra Objects
 - Add Mesh: Extra Objects
+- Object: Bool Tool
 
 ### Using the Script
 
